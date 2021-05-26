@@ -30,14 +30,14 @@ namespace OCP.Msal.Proxy.Web.Controllers
         [Route("api/auth")]
         [Authorize(Policy = "api")]
         [AllowAnonymous]
-        public IActionResult ApiAuth()
+        public async Task<IActionResult> ApiAuth()
         {
             if (!User.Identity.IsAuthenticated) return StatusCode(401, new Models.ApiUnauthorizedMessageModel
             {
                 tokenAuthorityMetadata = $"{_adOptions.Instance}{_adOptions.TenantId}/v2.0/.well-known/openid-configuration",
                 scope = $"k8seasyauth://{_adOptions.ClientId}/.default"
             });
-
+            Response.Headers.Add("X-OriginalAccessToken", await HttpContext.GetTokenAsync("access_token"));
             AddResponseHeadersFromClaims(User.Claims, Response.Headers);
 
             return StatusCode(202, User.Identity.Name);
@@ -73,11 +73,12 @@ namespace OCP.Msal.Proxy.Web.Controllers
         [Authorize(Policy = "web")]
         [AllowAnonymous]
         [Route("msal/auth")]
-        public IActionResult Auth()
+        public async Task<IActionResult> Auth()
         {
             if (!User.Identity.IsAuthenticated) return StatusCode(401, "Not Authenticated");
+            Response.Headers.Add("X-OriginalAccessToken", await HttpContext.GetTokenAsync("access_token"));
             AddResponseHeadersFromClaims(User.Claims, Response.Headers);
-
+            
             return StatusCode(202, User.Identity.Name);
         }
 
@@ -106,9 +107,13 @@ namespace OCP.Msal.Proxy.Web.Controllers
             foreach (var claim in claims)
             {
                 var claimName = claim.Type;
-                if (claimName.Contains("/")) claimName = claimName.Split('/')[claimName.Split('/').Length - 1];
-                var name = $"X-Injected-{claimName}";
-                if (!headers.ContainsKey(name)) headers.Add(name, claim.Value);
+                if (claimName.Contains("/")) 
+                    claimName = claimName.Split('/')[claimName.Split('/').Length - 1];
+                var name = $"X-Injected-{claim.Type}";
+                if (!headers.ContainsKey(name))
+                    headers.Add(name, claim.Value);
+                else
+                    headers[name] += $",{claim.Value}";
             }
         }
     }
